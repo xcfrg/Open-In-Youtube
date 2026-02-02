@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Open Apollo App
-// @version      1.1.0
+// @name         Open YouTube App
+// @version      2.0.0
 // @author       AnthonyGress
-// @match        *://*.reddit.com/*
-// @match        *://*.redditmedia.com/*
+// @match        *://*.youtube.com/*
+// @match        *://*.youtu.be/*
 // @match        *://*.yahoo.com/*
 // @match        *://*.bing.com/*
 // @match        *://*.duckduckgo.com/*
@@ -195,76 +195,86 @@
 // @match        *://*.google.co.zm/*
 // @match        *://*.google.co.zw/*
 // @match        *://*.google.cat/*
-// @downloadURL  https://gist.github.com/AnthonyGress/c04327abc6ff3bc45871468743f00341/raw/open-in-apollo.user.js
-// @updateURL    https://gist.github.com/AnthonyGress/c04327abc6ff3bc45871468743f00341/raw/open-in-apollo.user.js
-// @homepage     https://github.com/AnthonyGress/Open-In-Apollo/edit/main/open-in-apollo.user.js
+// @downloadURL  https://raw.githubusercontent.com/xcfrg/Open-In-Youtube/refs/heads/main/open-in-youtube.user.js
+// @updateURL    https://raw.githubusercontent.com/xcfrg/Open-In-Youtube/refs/heads/main/open-in-youtube.user.js
+// @homepage     https://github.com/xcfrg/Open-In-Youtube
 // ==/UserScript==
 
-// Note: Some search engines like DDG and Bing index redditmedia.com links
-const regexRedditIDs = /^(?:https?:\/\/)?(?:(?:www|amp|m|i)\.)?(?:(?:reddit\.com|redditmedia\.com))\/r\/(\w+)(?:\/comments\/(\w+)(?:\/\w+\/(\w+)(?:\/?.*?[?&]context=(\d+))?)?)?/i;
+// Note: Some search engines like DDG and Bing index youtu.be short links
 
-function openInApollo() {
-	const apolloUrl = convertToApolloUrl(window.location.href);
-	if (apolloUrl) {
-		window.location.href = apolloUrl;
+function openInYoutube() {
+	// Skip if running in iframe (embedded YouTube players)
+	if (window.self !== window.top) return;
+
+	// Skip /redirect paths (app-to-browser navigation)
+	if (window.location.pathname === '/redirect') return;
+
+	const youtubeUrl = convertToYoutubeUrl(window.location.href);
+	if (youtubeUrl) {
+		window.location.href = youtubeUrl;
 	}
 }
 
-function convertToApolloUrl(urlString) {
-	const match = urlString.match(regexRedditIDs);
-	const url = new URL(urlString);
+function convertToYoutubeUrl(urlString) {
+	try {
+		const url = new URL(urlString);
+		const hostname = url.hostname.toLowerCase();
 
-	if (url.pathname === '/' || url.pathname === '/?feed=home') {
-		return 'apollo://';
-	}
-
-	if (urlString.includes('/search')) {
-		return null;
-	}
-
-	if (match) {
-		// Apollo doesn't support redditmedia.com links, so convert them to reddit.com
-		let hostname = url.hostname.replace('redditmedia.com', 'reddit.com');
-
-		// Comments and posts
-		if (url.pathname.includes('/comments/')) {
-			return `apollo://${hostname}${url.pathname}`;
+		// Check if it's a YouTube domain
+		if (!hostname.includes('youtube.com') && !hostname.includes('youtu.be')) {
+			return null;
 		}
 
-		// Handle subreddit links with sorting suffixes
-		const sortingSuffixes = /\/(new|best|hot|top|rising)\/?$/;
-		const cleanPath = url.pathname.replace(sortingSuffixes, '');
-		return `apollo://${hostname}${cleanPath}`;
-	}
+		// Skip /redirect paths (YouTube app-to-browser navigation)
+		if (url.pathname === '/redirect') {
+			return null;
+		}
 
-	return null;
+		// Convert to youtube:// protocol
+		// Format: youtube://{pathname without leading slash}{search}{hash}
+		const pathname = url.pathname.slice(1); // Remove leading '/'
+		const search = url.search || '';
+		const hash = url.hash || '';
+
+		return `youtube://${pathname}${search}${hash}`;
+	} catch (error) {
+		console.error('Error converting to YouTube URL:', error);
+		return null;
+	}
 }
 
 function processSearchResults() {
-	const searchResults = document.querySelectorAll('a:not([data-apollo-listener-added])');
+	const searchResults = document.querySelectorAll('a:not([data-youtube-listener-added])');
 	searchResults.forEach(link => {
 		const href = link.href;
 		if (!href) return;
-		
-		if (href.match(regexRedditIDs)) {
-			const apolloUrl = convertToApolloUrl(href);
-			if (apolloUrl) {
-				// Prevent duplicate listeners
-				link.setAttribute('data-apollo-listener-added', 'true');
 
-				// Hook into 'click' instead of changing link.href so that long press still works.
-				link.addEventListener('click', (event) => {
-					event.preventDefault();
-					event.stopPropagation();
-					window.location.href = apolloUrl;
-				}, { capture: true });
+		// Check if link points to YouTube
+		try {
+			const url = new URL(href);
+			const hostname = url.hostname.toLowerCase();
+			if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
+				const youtubeUrl = convertToYoutubeUrl(href);
+				if (youtubeUrl) {
+					// Prevent duplicate listeners
+					link.setAttribute('data-youtube-listener-added', 'true');
+
+					// Hook into 'click' instead of changing link.href so that long press still works.
+					link.addEventListener('click', (event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						window.location.href = youtubeUrl;
+					}, { capture: true });
+				}
 			}
+		} catch (error) {
+			// Skip invalid URLs
 		}
 	});
 }
 
-if (window.location.hostname.includes('reddit.com') || window.location.hostname.includes('redditmedia.com')) {
-	openInApollo();
+if (window.location.hostname.includes('youtube.com') || window.location.hostname.includes('youtu.be')) {
+	openInYoutube();
 } else {
 	processSearchResults();
 
